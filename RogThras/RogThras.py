@@ -4,6 +4,7 @@ import numpy as np
 import re
 
 from pprint import pprint
+import copy
 
 REV_CARD_TYPES = {
     1          :'creature',
@@ -13,9 +14,7 @@ REV_CARD_TYPES = {
     10000      :'enchantment',
     100000     :'land',
     }
-
 CARD_TYPES = dict((val, key) for key, val in REV_CARD_TYPES.items())
-
 
 REV_SPECIAL_TYPES = {
     0       : None,
@@ -54,7 +53,7 @@ ALL_CARDS = {
     "Flesh Duplicate"                   : [1, 0, 2],
     "Gilded Drake"                      : [1, 0, 2],
     "Magus of the Candelabra"           : [1, 0, 1], 
-    "Mockingbird"                       : [1, 0, -1],
+    "Mockingbird"                       : [1, 0, 2],
     "Oboro Breezecaller"                : [1, 1, 2], 
     "Phantasmal Image"                  : [1, 0, 2],
     "Phyrexian Metamorph"               : [1, 0, 4],
@@ -158,6 +157,7 @@ ALL_CARDS = {
     "Prismatic Vista"                   : [100000, 0, 0],
     "Scalding Tarn"                     : [100000, 0, 0],
     "Shifting Woodland"                 : [100000, 0, 0],
+    "Snow-Covered Forest"               : [100000, 0, 0],
     "Snow-Covered Island"               : [100000, 0, 0],
     "Taiga"                             : [100000, 0, 0],
     "Talon Gates of Madara"             : [100000, 1, 0],
@@ -173,18 +173,25 @@ ALL_CARDS = {
 
 '''
 TO DO:
-- Land tutors are wincons. I think incorporating these at a minimum would much better model a manual goldfish. This could be split into to-hand (cost + 5x mana) or to-battlefield (cost + 1x mana, with + 1x land for Crop rot), or even manually coded as there's a limited number of them.,
-- creature tutors are soft wincons with limited mana, and hard wincons with heaps of mana. If you have lots of mana/lands, go for spellseeker>Crop rot/sylvan scrying>win. If you only have a bit of mana, go for biomancer.,
-- Less important, but i think adding an initial step to check for "playable" cards in hand, and playing them if you have enough mana (including thras spin + oboro) would help the odds. Currently, my understanding is that finding a dork when you are low on resources means the dork is just stuck in your hand.,
-- Would be nice to get a way to change the initial conditions without having to update the underlying code. Not critical though.,
+- Land tutors are wincons. I think incorporating these at a minimum would 
+  much better model a manual goldfish. This could be split into to-hand 
+  (cost + 5x mana) or to-battlefield (cost + 1x mana, with + 1x land for Crop 
+  rot), or even manually coded as there's a limited number of them.,
+- creature tutors are soft wincons with limited mana, and hard wincons with 
+  heaps of mana. If you have lots of mana/lands, go for spellseeker>Crop rot
+  /sylvan scrying>win. If you only have a bit of mana, go for biomancer.,
+- Less important, but i think adding an initial step to check for "playable" 
+  cards in hand, and playing them if you have enough mana (including thras spin + 
+  oboro) would help the odds. Currently, my understanding is that finding a dork 
+  when you are low on resources means the dork is just stuck in your hand.,
+- Would be nice to get a way to change the initial conditions without having to 
+  update the underlying code. Not critical though.,
 - Would be nice to get a line at the end that says success or failed,
 - And lastly, how do we run this 10000x?
 - Confirm we still have enough mana to win if TGoM gets thrasios'ed into play
 
 Lines:
     Crop Rotation
-
-
 
     Spellseeker > Crop Rotation 
         Requirements 
@@ -248,7 +255,7 @@ class Gamestate:
                 'land': [3, ["Dryad Arbor", "Talon Gates of Madara"]],
                 },
             },
-        mana_pool = 0
+        mana_pool = 0,
         ):
         
         self.battlefield = []
@@ -302,20 +309,44 @@ class Gamestate:
             source = self.battlefield,
             )
         
-        # The current max mana that can be produced is
+        # The current max mana that can be produced is given by:
+        #   mana_pool + mana netted from oboro activations
+        current_max_mana = self.calc_max_mana()  
 
         print(f'Cards in hand: {len(self.hand)}')
-        print(f'Mana pool: {self.mana_pool}')
+        print(f'Mana pool: {self.mana_pool} of {current_max_mana}')
         print(f'Lands in play: {num_battlefield_lands}')
         print('\n')
     
+    #----------------------------------------------------------------------------
+    def calc_max_mana(self):
+        '''
+        PURPOSE
+        The purpose of this function is to calculate the maximum amount of mana
+        that is currently available to the player from the current boardstate. 
+        It assumes that all mana is from either
+
+            1) Mana currently in the mana pool or
+            2) can be produced from Oboro/cradle activations
+        
+        '''
+        # Create a temporary instance of the current boardstate
+        gamestate_copy = copy.deepcopy(self)
+        while not gamestate_copy.FIZZLE_FLAG:
+            gamestate_copy.activate_oboro(verbose = False)
+        
+        return gamestate_copy.mana_pool
     #----------------------------------------------------------------------------
     def shuffle_deck(self):
         np.random.shuffle(self.library)
 
     #----------------------------------------------------------------------------
     def update_activation_costs(self):
-        
+        '''
+        PURPOSE
+        After a cost reducer is cost, we need to update the activation costs of 
+        our creatures.
+        '''
         self.thrasios_cost -= 2
         if self.thrasios_cost <= 1:
             self.thrasios_cost = 1
@@ -435,8 +466,7 @@ class Gamestate:
                 dest = self.battlefield,
                 )
 
-            if verbose:
-                print(f'Win! {top_card} > battlefield')
+            if verbose: print(f'Win! {top_card} > battlefield')
             
             self.FIZZLE_FLAG = True
             return top_card
@@ -473,8 +503,14 @@ class Gamestate:
             (top_card_mv + 1 <= len(oboro_lands)) and \
             (self.mana_pool - top_card_mv >= self.oboro_cost) and \
             (top_card != "Dryad Arbor"):
+            
             # If the top card is a creature with mana value less than the
             # number of remaining Oboro activations, take it and cast it
+            #
+            # This should also consider the case where we need to 
+            # activate the Oboro to have enough mana to case the creature and 
+            # still have enough remaining Oboro activations to go mana neutral
+            # from the exchange.
             self.move_specific(
                 cards_to_move = [top_card],
                 source = self.library,
@@ -602,20 +638,24 @@ class Gamestate:
         '''
         PURPOSE
         This function models an Oboro Breezecaller activation.
+        
+        SQUASHED BUGS
+        We need to check the number of lands to bounce before we check the 
+        available mana so that the mana cost is not paid before fizzling.
         '''
-        # check available mana
-        if self.mana_pool >= self.oboro_cost:
-            self.mana_pool -= self.oboro_cost
-        else:
-            self.FIZZLE_FLAG = True
-            return None
-
-        # check number of lands 
+        # check number of lands to bounce. 
         num_battlefield_lands, _ = self.count_types(
             card_type = 'land', 
             source = self.battlefield,
             )
         if num_battlefield_lands < 2:
+            self.FIZZLE_FLAG = True
+            return None
+        
+        # check available mana
+        if self.mana_pool >= self.oboro_cost:
+            self.mana_pool -= self.oboro_cost
+        else:
             self.FIZZLE_FLAG = True
             return None
 
@@ -722,13 +762,13 @@ if __name__ == "__main__":
             # location : card type : [amount, [cards to exclude]]
             'battlefield' : {
                 'creature': [3, ["Dryad Arbor"]],
-                'land': [2, ["Dryad Arbor", "Talon Gates of Madara"]],
+                'land': [3, ["Dryad Arbor", "Talon Gates of Madara"]],
                 },
             },
         mana_pool = 3,
         )
     game.grind()
-
+    #game.calc_max_mana()
 
 
 
