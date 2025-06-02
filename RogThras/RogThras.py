@@ -434,204 +434,166 @@ class Gamestate:
         PURPOSE
         Models an activation of Thrasios
         '''
+        #----------------------------------------------------------------------- 
+        def assess_card(position):
+            '''
+            PURPOSE
+            The purpose of this function is to unify the logic used to decide
+            whether or not to keep a card with thrasios.
+            '''
+
+            # Look at top card
+            card = self.library[0]
+
+            card_type_id    = ALL_CARDS[card][0]
+            card_spec_id    = ALL_CARDS[card][1]        
+            card_mv         = ALL_CARDS[card][2]
+
+            # Get Oboro Activations remaining
+            _, battlefield_lands = self.count_types(
+                card_type = 'land', 
+                source = self.battlefield,
+                )
+            oboro_lands = []
+            for land in battlefield_lands:
+                if land not in ["Gaea's Cradle", "Dryad Arbor"]:
+                    oboro_lands.append(land)
+            
+            oboro_acts_remaining = len(oboro_lands)
+
+            if int(card_spec_id) % 10 == 1:
+                # top card is Talon Gates, choose to put into play
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.battlefield,
+                    )
+
+                if verbose:
+                    if (self.calc_max_mana() >= 1): 
+                        print(f'Win! {card} > battlefield')
+                    else:
+                        print(f'Close but no cigar.')
+
+                self.FIZZLE_FLAG = True
+                return True
+                
+            elif (int(card_spec_id/10) % 10 == 1) and \
+                (((self.mana_pool - card_mv >= 1) and (oboro_acts_remaining >= 1)) or \
+                    ((self.mana_pool >= 2) and (oboro_acts_remaining >= 2))
+                ):
+                # Top card is a cost reducer, choose to put into hand if we 
+                # either 
+                # 1) have enough mana to activate oboro afterwards or 
+                # 2) can activate oboro, cast the cost reducer, then activate 
+                #    oboro again
+
+                if verbose: print(f'Cost Reducer! {card} > battlefield')
+
+                if (self.mana_pool - card_mv <= 0):
+                    # Activate oboro then cast creature
+                    self.activate_oboro(verbose = True)
+                
+                # Cast it
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.battlefield,
+                    )
+                
+                self.mana_pool -= card_mv
+                self.update_activation_costs()
+                self.storm_count += 1
+
+                return True
+
+            elif (
+                    (int(card_type_id) % 10 > 0) and \
+                    (card != "Dryad Arbor")
+                ) and \
+                (
+                    (
+                        (card_mv <= oboro_acts_remaining) and \
+                        (self.mana_pool - card_mv >= self.oboro_cost)
+                        ) or \
+                    (card_mv <= oboro_acts_remaining - 1)
+                ):
+                
+                # If the top card is a non-dryad arbor creature 
+                # And  either 
+                # (1) its mana value is less than the number of remaining Oboro 
+                #       activations we have and we can cast it with floating mana
+                #       and still activate oboro afterwards
+                # OR
+                #
+                # (2) its mana value is less than one minus the number of 
+                #       remaining oboro activations,
+                # then we should take it and cast it in case we hit another land
+                # later on.
+                #
+                # This should also consider the case where we need to 
+                # activate the Oboro to have enough mana to case the creature and 
+                # still have enough remaining Oboro activations to go mana neutral
+                # from the exchange.
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.battlefield,
+                    )
+                
+                if (self.mana_pool - card_mv < self.oboro_cost):
+                    # Activate oboro then cast creature
+                    self.activate_oboro(verbose = True)
+                
+                self.storm_count += 1
+                self.mana_pool -= card_mv
+                
+                if verbose: print(f'Cheap Creature! {card} > battlefield')
+                
+                return True
+
+            elif int(card_type_id / 100000)  % 10 > 0:
+                # top card is a land, choose to put into play
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.battlefield,
+                    )
+
+                if verbose: print(f'Land! {card} > battlefield')
+
+                return True
+            
+            elif position == 0:
+                # Move card to bottom
+
+                self.library.pop(0)
+                self.library.append(card)
+                if verbose: print(f'Miss. {card} > bottom')
+                return False
+
+            elif position == 1:
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.hand,
+                    )
+                if verbose: print(f'Miss. {card} > hand')
+                return False
+        #-----------------------------------------------------------------------
+
+
         # check available mana
         if self.mana_pool >= self.thrasios_cost:
             self.mana_pool -= self.thrasios_cost
         else:
             self.FIZZLE_FLAG = True
             return None
-
-        # Look at top card
-        top_card = self.library[0]
-
-        top_card_type_id    = ALL_CARDS[top_card][0]
-        top_card_spec_id    = ALL_CARDS[top_card][1]        
-        top_card_mv         = ALL_CARDS[top_card][2]
-
-        # Get Oboro Activations remembering
-        _, battlefield_lands = self.count_types(
-            card_type = 'land', 
-            source = self.battlefield,
-            )
-        oboro_lands = []
-        for land in battlefield_lands:
-            if land not in ["Gaea's Cradle", "Dryad Arbor"]:
-                oboro_lands.append(land)
-
-        if int(top_card_spec_id) % 10 == 1:
-            # top card is Talon Gates, choose to put into play
-            self.move_specific(
-                cards_to_move = [top_card],
-                source = self.library,
-                dest = self.battlefield,
-                )
-
-            if verbose: print(f'Win! {top_card} > battlefield')
-            
-            self.FIZZLE_FLAG = True
-            return top_card
-            
-        elif (int(top_card_spec_id/10) % 10 == 1) and \
-            (((self.mana_pool - top_card_mv >= 1) and (len(oboro_lands) >= 1)) or \
-                ((self.mana_pool >= 2) and (len(oboro_lands) >= 2))
-            ):
-            # Top card is a cost reducer, choose to put into hand if we either 
-            # 1) have enough mana to activate oboro afterwards or 
-            # 2) can activate oboro, cast the cost red, then activate oboro again
-
-            if verbose:
-                print(f'Sick! {top_card} > hand')
-
-            if (self.mana_pool - top_card_mv <= 0):
-                # Activate oboro then cast creature
-                self.activate_oboro(verbose = True)
-            
-            # Cast it
-            self.move_specific(
-                cards_to_move = [top_card],
-                source = self.library,
-                dest = self.battlefield,
-                )
-            
-            self.mana_pool -= top_card_mv
-            self.update_activation_costs()
-            self.storm_count += 1
-
-            return top_card
-
-        elif (int(top_card_type_id) % 10 > 0) and \
-            (top_card_mv + 1 <= len(oboro_lands)) and \
-            (self.mana_pool - top_card_mv >= self.oboro_cost) and \
-            (top_card != "Dryad Arbor"):
-            
-            # If the top card is a creature with mana value less than the
-            # number of remaining Oboro activations, take it and cast it
-            #
-            # This should also consider the case where we need to 
-            # activate the Oboro to have enough mana to case the creature and 
-            # still have enough remaining Oboro activations to go mana neutral
-            # from the exchange.
-            self.move_specific(
-                cards_to_move = [top_card],
-                source = self.library,
-                dest = self.battlefield,
-                )
-            
-            if (self.mana_pool - top_card_mv >= self.oboro_cost):
-                # Activate oboro then cast creature
-                self.activate_oboro(verbose = True)
-            
-            if verbose:
-                print(f'Cheap Creature! {top_card} > battlefield')
-            
-            self.storm_count += 1
-            self.mana_pool -= top_card_mv
-            
-            return top_card
-
-        elif int(top_card_type_id / 100000)  % 10 > 0:
-            # top card is a land, choose to put into play
-            self.move_specific(
-                cards_to_move = [top_card],
-                source = self.library,
-                dest = self.battlefield,
-                )
-
-            if verbose:
-                print(f'Hit! {top_card} > battlefield')
-            
-            return top_card
         
-        else:
-            self.library.pop(0)
-            self.library.append(top_card)
-
-            second_card = self.library[0]
-            second_card_type_id = ALL_CARDS[second_card][0]
-            second_card_spec_id = ALL_CARDS[second_card][1]
-            second_card_mv      = ALL_CARDS[second_card][2]
-            
-            if int(second_card_spec_id) % 10 == 1:
-                # top card is Talon Gates, choose to put into play
-                self.move_specific(
-                    cards_to_move = [second_card],
-                    source = self.library,
-                    dest = self.battlefield,
-                    )
-
-                if verbose:
-                    print(f'Win! {second_card} > battlefield')
-                
-                self.FIZZLE_FLAG = True
-            
-            elif (int(second_card_spec_id/10) % 10 == 1) and \
-                (((self.mana_pool - second_card_mv >= 1) and (len(oboro_lands) >= 1)) or \
-                    ((self.mana_pool >= 2) and (len(oboro_lands) >= 2))
-                ):
-                # top card is a cost reducer, choose to put into hand
-                self.move_specific(
-                    cards_to_move = [second_card],
-                    source = self.library,
-                    dest = self.hand,
-                    )
-
-                if verbose:
-                    print(f'Sick! {second_card} > battlefield')
-                
-                # Cast it
-                self.move_specific(
-                    cards_to_move = [second_card],
-                    source = self.hand,
-                    dest = self.battlefield,
-                    )
-                
-                self.mana_pool -= ALL_CARDS[second_card][2]
-                self.update_activation_costs()
-            
-            elif (int(second_card_type_id) % 10 > 0) and \
-                (second_card_mv + 1 <= len(oboro_lands)) and \
-                (self.mana_pool - second_card_mv >= self.oboro_cost) and \
-                (second_card != "Dryad Arbor"):
-                # If the top card is a creature with mana value less than the
-                # number of remaining Oboro activations, take it and cast it
-                self.move_specific(
-                    cards_to_move = [second_card],
-                    source = self.library,
-                    dest = self.battlefield,
-                    )
-                
-                if (self.mana_pool - second_card_mv >= self.oboro_cost):
-                    # Activate oboro then cast creature
-                    self.activate_oboro(verbose = True)
-                
-                if verbose:
-                    print(f'Cheap Creature! {second_card} > battlefield')
-                
-                self.mana_pool -= second_card_mv
-                
-                return second_card
-
-
-            elif int(second_card_type_id / 100000) % 10 > 0:
-                # top card is a land, choose to put into play
-                self.move_specific(
-                    cards_to_move = [second_card],
-                    source = self.library,
-                    dest = self.battlefield,
-                    )
-                
-                if verbose:
-                    print(f'Hit! {top_card} > bottom, {second_card} > battlefield')
-            
-            else:
-                self.move_specific(
-                    cards_to_move = [second_card],
-                    source = self.library,
-                    dest = self.hand,
-                    )
-                print(f'Miss. {top_card} > bottom, {second_card} > hand')
-            
-            return second_card
+        PLAYED_FLAG = assess_card(position = 0)
+        if not PLAYED_FLAG:
+            PLAYED_FLAG = assess_card(position = 1)
+        
 
     #----------------------------------------------------------------------------
     def activate_oboro(self, verbose = False):
@@ -726,7 +688,7 @@ class Gamestate:
         while not self.FIZZLE_FLAG:
             
             if self.mana_pool >= self.thrasios_cost + self.oboro_cost:
-                card = self.activate_thrasios(verbose = True)
+                self.activate_thrasios(verbose = True)
                 thras_acts += 1
             else:
                 self.activate_oboro(verbose = True)
