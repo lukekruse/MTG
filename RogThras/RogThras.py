@@ -3,8 +3,11 @@ import numpy as np
 # For processing txts from Moxfield
 import re
 
-from pprint import pprint
+# For determining max available mana
 import copy
+
+from tqdm import tqdm
+from pprint import pprint
 
 REV_CARD_TYPES = {
     1          :'creature',
@@ -173,12 +176,24 @@ ALL_CARDS = {
     "Yavimaya, Cradle of Growth"        : [100000, 0, 0],
     }
 
+FETCH_LIST = [
+    "Arid Mesa",
+    "Flooded Strand",
+    "Misty Rainforest",
+    "Polluted Delta",
+    "Prismatic Vista",
+    "Scalding Tarn",
+    "Verdant Catacombs",
+    "Windswept Heath",
+    "Wooded Foothills",
+    ]
+
 '''
 TO DO:
 
 - Special Cards
-    - Cloud of Faeries
-    - Springheart Nantuko
+    x Cloud of Faeries
+    x Springheart Nantuko
     - Thundertrap Trainer
 
     x Chatterstorm
@@ -187,29 +202,30 @@ TO DO:
     - Snap
     - Frantic Search
 
-
-- Land tutors are wincons. 
-    I think incorporating these at a minimum would 
-    much better model a manual goldfish. This could be split into to-hand 
-    (cost + 5x mana) or to-battlefield (cost + 1x mana, with + 1x land for Crop 
-    rot), or even manually coded as there's a limited number of them.,
+- Tutors are wincons. 
+    - Land Tutors
+        - Crop Rotation
+        x Sylvan Scrying
+        x Tempt with Discovery
+        - Traverse the Ulvenwald
     
-    Examples
-
-    - Crop Rotation
-    x Sylvan Scrying
-    - Gamble
-    x Tempt with Discovery
-    - Traverse the Ulvenwald
-
-- creature tutors are soft wincons with limited mana, and hard wincons with 
-  heaps of mana. If you have lots of mana/lands, go for spellseeker>Crop rot
-  /sylvan scrying>win. If you only have a bit of mana, go for biomancer.,
-    - Nature's Rhythm
-    - Invasion of Ikoria
-    - Finale of Devastation
-    - Spellseeker
-
+    - Creature Tutors 
+        x Nature's Rhythm
+            x Initiates a spellseeker line if possible, otherwise,
+            - tries to get a cost reducer
+        x Finale of Devastation
+            x Initiates a spellseeker line if possible, otherwise,
+            - tries to get a cost reducer
+            - can also get from bin
+        x Spellseeker
+            Initiates either the Crop rotation or the Sylvan Scrying line
+        - Chord of Calling
+            - Convoke is not handled
+    
+    - Other Tutors
+        - Gamble
+            Gamble should be sent for a mycospawn line. If we can't afford the 
+            mycospawn line, get Talon Gates Directly and pray to RNGesus.
 
 - Check for playable cards in hand
     Less important, but i think adding an initial step to check for "playable" 
@@ -218,6 +234,7 @@ TO DO:
     when you are low on resources means the dork is just stuck in your hand.,
 
     - Rocks / Rituals
+        - Candelabra of Tawnos
 
 - Would be nice to get a way to change the initial conditions without having to 
   update the underlying code. Not critical though.,
@@ -285,28 +302,42 @@ class Gamestate:
         random_adds:dict = {
             # location : card type : [amount, [cards to exclude]]
             'battlefield' : {
-                'creature': [1, ["Dryad Arbor"]],
+                'creature': [1, ["Dryad Arbor", "Biomancer's Familiar"]],
                 'land': [3, ["Dryad Arbor", "Talon Gates of Madara"]],
                 },
             },
-        mana_pool = 0,
+        mana_pool:int = 0,
+        storm_count:int = 0,
         ):
-        
-        self.battlefield = []
-        self.graveyard = []
-        self.hand = []
-        self.library = decklist
-        self.mana_pool = mana_pool
-        
-        self.thrasios_cost = 4
-        self.oboro_cost = 2
-        self.storm_count = 0
+        '''
+        PURPOSE
+        This class is designed to model the non-deterministic loop formed
+        by Oboro Breezecaller and Thrasios, Triton Hero. 
+        As inputs it requires a decklist, and allows you to specify where 
+        individual cards are located or randomly place cards of a certain or 
+        random type in a particular location. Cards may be excluded from this
+        random selection.
 
-        self.FIZZLE_FLAG = False
-        self.WIN_FLAG = False
+        To place a specific card somewhere, use the specific dictionary input.
+        '''
+        self.battlefield    = []
+        self.exile          = []
+        self.graveyard      = []
+        self.hand           = []
+        self.library        = decklist
+        self.mana_pool      = mana_pool
+        
+        self.thrasios_cost  = 4
+        self.oboro_cost     = 2
+        self.storm_count    = storm_count
+
+        self.SPRINGHEART_FLAG   = False
+        self.FIZZLE_FLAG        = False
+        self.WIN_FLAG           = False
 
         self.LOC_TYPES = {
             'battlefield'   : self.battlefield,
+            'exile'         : self.exile,
             'graveyard'     : self.graveyard,
             'hand'          : self.hand,
             'library'       : self.library,
@@ -332,8 +363,43 @@ class Gamestate:
                     exclusions = exclusions,
                     verbose = False
                     )
-       
+
         self.shuffle_deck()
+        
+        # Initial Metrics
+        num_battlefield_lands, _ = self.count_types(
+            card_type = 'land', 
+            source = self.battlefield,
+            )
+        
+        num_battlefield_creatures, _ = self.count_types(
+            card_type = 'creature', 
+            source = self.battlefield,
+            )
+
+        # The current max mana that can be produced is given by:
+        #   mana_pool + mana netted from oboro activations
+        init_max_mana = self.calc_max_mana()  
+        
+        self.INIT_LAND_COUNT        = num_battlefield_lands
+        self.INIT_CREATURE_COUNT    = num_battlefield_creatures
+        self.INIT_MAX_MANA          = init_max_mana
+
+        # Metrics to keep track of
+        self.THRAS_ACTS             = 0
+        self.THRAS_LANDS_HIT        = 0
+        
+        self.COST_REDUCERS          = 0
+        self.LANDFALL_TRIGGERS      = 0
+        self.WIN_CON                = 'None'
+        
+        self.CHATTERSTORM_COUNT     = 0
+
+        # Check if cost reducers are initially present
+        cost_reducers = ["Biomancer's Familiar", "Training Grounds"]
+        for cost_red in cost_reducers:
+            self.update_activation_costs()
+            self.COST_REDUCERS += 1
 
     #----------------------------------------------------------------------------
     def print_log(self):
@@ -344,13 +410,17 @@ class Gamestate:
             source = self.battlefield,
             )
         
+        num_battlefield_creatures, _ = self.count_types(
+            card_type = 'creature', 
+            source = self.battlefield,
+            )
+
         # The current max mana that can be produced is given by:
         #   mana_pool + mana netted from oboro activations
         current_max_mana = self.calc_max_mana()  
 
-        print(f'Cards in hand: {len(self.hand)}')
-        print(f'Mana pool: {self.mana_pool} of {current_max_mana}')
-        print(f'Lands in play: {num_battlefield_lands}')
+        print(f'Hand: {len(self.hand)} | Mana Pool: {self.mana_pool} of {current_max_mana}' +\
+                f' | Battlefield: Lands {num_battlefield_lands}, Creatures {num_battlefield_creatures}')
         print('\n')
     
     #----------------------------------------------------------------------------
@@ -523,15 +593,18 @@ class Gamestate:
             card_mv         = ALL_CARDS[card][2]
 
             # Get Oboro Activations remaining
-            _, battlefield_lands = self.count_types(
+            num_battlefield_lands, battlefield_lands = self.count_types(
                 card_type = 'land', 
                 source = self.battlefield,
                 )
             oboro_lands = []
+            mana_producing_lands = 0
             for land in battlefield_lands:
                 if land not in ["Gaea's Cradle", "Dryad Arbor"]:
                     oboro_lands.append(land)
-            
+                
+                if land not in FETCH_LIST + ["Dryad Arbor"]:
+                    mana_producing_lands += 1
             # Update cradle count
             num_battlefield_creatures, _ = self.count_types(
                 card_type = 'creature', 
@@ -539,9 +612,13 @@ class Gamestate:
                 )
             
             oboro_acts_remaining = len(oboro_lands)
+            desperate_oboro_acts_remaining = oboro_acts_remaining + \
+                ("Dryad Arbor" in battlefield_lands) 
+            
             current_max_mana = self.calc_max_mana()
             penult_max_mana = self.calc_max_mana(LEAVE_ONE_FLAG = True)
             TGOM_FLAG = "Talon Gates of Madara" in self.library
+            #print(TGOM_FLAG, penult_max_mana,'/',current_max_mana, desperate_oboro_acts_remaining) 
 
             #-------------------------------------------------------------------
             if int(card_spec_id) % 10 == 1:
@@ -558,6 +635,7 @@ class Gamestate:
                     if (self.calc_max_mana() >= 1): 
                         print(f'Win! {card} > battlefield')
                         self.WIN_FLAG = True
+                        self.WIN_CON = card
                     else:
                         print(f'Close but no cigar.')
                         self.FIZZLE_FLAG = True
@@ -599,16 +677,17 @@ class Gamestate:
                 self.mana_pool -= card_mv
                 self.update_activation_costs()
                 self.storm_count += 1
-
+                
+                self.COST_REDUCERS += 1
                 return True
 
             #-------------------------------------------------------------------
             elif (
-                (card in ["Crop Rotation"])
+                (card == "Crop Rotation")
                 and \
                 (penult_max_mana >= 1)
                 and \
-                ((oboro_acts_remaining >= 1) or ('Dryad Arbor' in self.battlefield))
+                (desperate_oboro_acts_remaining >= 1)
                 # ensures that we have a land to sac
                 and \
                 (num_battlefield_creatures >= 6)
@@ -629,6 +708,7 @@ class Gamestate:
                     print(f'Win! {card} line is available.')
                 
                 self.WIN_FLAG = True
+                self.WIN_CON = card
                 return True
             #-------------------------------------------------------------------
             elif (
@@ -655,6 +735,7 @@ class Gamestate:
                     print(f'Win! {card} line is available.')
                 
                 self.WIN_FLAG = True
+                self.WIN_CON = card
                 return True
             #-------------------------------------------------------------------
             elif (
@@ -666,7 +747,7 @@ class Gamestate:
                 and \
                 (
                     (
-                        ((oboro_acts_remaining >= 1) or ('Dryad Arbor' in self.battlefield)) and \
+                        (desperate_oboro_acts_remaining >= 1) and \
                         ("Crop Rotation" in self.library) and \
                         (penult_max_mana >= 4)
                     ) or \
@@ -689,21 +770,21 @@ class Gamestate:
                     print(f'Win! {card} line is available.')
                 
                 self.WIN_FLAG = True
+                self.WIN_CON = card
                 return True
             #-------------------------------------------------------------------
             elif (
-                (card in ["Nature's Rhythm", "Finale of Devastation", 
-                    "Invasion of Ikoria"])
+                (card == "Step Through")
                 and \
                 (num_battlefield_creatures >= 5)
                 and \
-                TGOM_FLAG
+                (TGOM_FLAG)
                 and \
                 ("Spellseeker" in self.library)
                 and \
                 (
                     (
-                        ((oboro_acts_remaining >= 1) or ('Dryad Arbor' in self.battlefield)) and \
+                        (desperate_oboro_acts_remaining >= 1) and \
                         ("Crop Rotation" in self.library) and \
                         (penult_max_mana >= 6)
                     ) or \
@@ -726,6 +807,44 @@ class Gamestate:
                     print(f'Win! {card} line is available.')
                 
                 self.WIN_FLAG = True
+                self.WIN_CON = card
+                return True
+            #-------------------------------------------------------------------
+            elif (
+                (card in ["Nature's Rhythm", "Finale of Devastation"]) 
+                and \
+                (num_battlefield_creatures >= 5)
+                and \
+                (TGOM_FLAG)
+                and \
+                ("Spellseeker" in self.library)
+                and \
+                (
+                    (
+                        (desperate_oboro_acts_remaining >= 1) and \
+                        ("Crop Rotation" in self.library) and \
+                        (penult_max_mana >= 6)
+                    ) or \
+                    (
+                        ("Sylvan Scrying" in self.library) and \
+                        (current_max_mana >= 12)
+                    )
+                )
+                ):
+                '''
+                '''
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.graveyard,
+                    )
+                
+                self.storm_count += 1
+                if verbose: 
+                    print(f'Win! {card} line is available.')
+                
+                self.WIN_FLAG = True
+                self.WIN_CON = card
                 return True
             #-------------------------------------------------------------------
             elif (
@@ -742,8 +861,9 @@ class Gamestate:
                         ("Crop Rotation" in self.library) and \
                         (penult_max_mana >= 7)
                         and \
-                        ((oboro_acts_remaining >= 1) or ('Dryad Arbor' in self.battlefield))
-                    ) or \
+                        (desperate_oboro_acts_remaining >= 1)
+                    )
+                    or \
                     (
                         ("Sylvan Scrying" in self.library) and \
                         (current_max_mana >= 13)
@@ -764,6 +884,7 @@ class Gamestate:
                     print(f'Win! {card} line is available.')
                 
                 self.WIN_FLAG = True
+                self.WIN_CON = card
                 return True
             #-------------------------------------------------------------------
             elif (
@@ -788,6 +909,7 @@ class Gamestate:
                 if verbose: 
                     print(f'Win! {card} line is available.')
                 
+                self.WIN_CON = card
                 self.WIN_FLAG = True
                 return True
             #-------------------------------------------------------------------
@@ -813,6 +935,7 @@ class Gamestate:
                     print(f'Win! {card} line is available.')
                 
                 self.WIN_FLAG = True
+                self.WIN_CON = card
                 return True
             #-------------------------------------------------------------------
             elif (
@@ -838,7 +961,41 @@ class Gamestate:
                     print(f'Win! {card} line is available.')
                 
                 self.WIN_FLAG = True
+                self.WIN_CON = card
                 return True
+            #-------------------------------------------------------------------
+            elif (
+                (card == "Springheart Nantuko")
+                and not \
+                (
+                    (oboro_acts_remaining  == 0) and \
+                    (self.mana_pool <= self.oboro_cost + self.thrasios_cost + \
+                        card_mv)
+                    )
+                ):
+                '''
+                Springheart Nantuko will almost always be worth casting
+                
+                ASSUMPTIONS
+                Cast Springheart even if we have only cradle and enough mana to
+                try and get a lucky flip from thrasios and oboro to untap.
+                '''
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.graveyard,
+                    )
+                
+                if (self.mana_pool - card_mv < self.oboro_cost):
+                    # Activate oboro then cast creature
+                    self.activate_oboro(verbose = True)
+                
+                self.storm_count += 1
+                self.mana_pool -= card_mv
+                if verbose: print(f'Start the Landfalls! {card} > battlefield')
+                self.SPRINGHEART_FLAG = True 
+                return True
+            
             #-------------------------------------------------------------------
             elif (
                 (card == "Chatterstorm")
@@ -878,7 +1035,58 @@ class Gamestate:
                         'Creature Tokens.'
                         )
                 
+                self.CHATTERSTORM_COUNT += self.storm_count
                 return True
+            
+            #-------------------------------------------------------------------
+            elif (
+                    (card == "Cloud of Faeries")
+                and \
+                    (
+                        (
+                        (card_mv <= oboro_acts_remaining) and \
+                        (self.mana_pool - card_mv >= self.oboro_cost)
+                        ) 
+                    or \
+                    (card_mv <= oboro_acts_remaining - 1)
+                    or \
+                    (num_battlefield_lands >= 2)
+                    )
+                ):
+                '''
+                Cloud of Faeries has an etb trigger that needs to be handled.
+                '''
+                if (self.mana_pool - card_mv < self.oboro_cost):
+                    # Activate oboro then cast creature
+                    self.activate_oboro(verbose = True)
+                
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.battlefield,
+                    )
+                
+                # Update cradle count
+                num_battlefield_creatures, _ = self.count_types(
+                    card_type = 'creature', 
+                    source = self.battlefield,
+                    )
+                
+                self.storm_count += 1
+                self.mana_pool -= card_mv
+                
+                # Do we have another land to untap to generate mana?
+                if mana_producing_lands > 2:
+                    extra = 1
+                else:
+                    extra = 0
+
+                self.mana_pool += num_battlefield_creatures + extra  
+                if verbose: print(f'Cheap Creature! {card} > battlefield')
+                
+                return True
+
+
             #-------------------------------------------------------------------
             elif (
                     (int(card_type_id) % 10 > 0) and \
@@ -909,15 +1117,15 @@ class Gamestate:
                 still have enough remaining Oboro activations to go mana neutral
                 from the exchange.
                 '''
+                if (self.mana_pool - card_mv < self.oboro_cost):
+                    # Activate oboro then cast creature
+                    self.activate_oboro(verbose = True)
+                
                 self.move_specific(
                     cards_to_move = [card],
                     source = self.library,
                     dest = self.battlefield,
                     )
-                
-                if (self.mana_pool - card_mv < self.oboro_cost):
-                    # Activate oboro then cast creature
-                    self.activate_oboro(verbose = True)
                 
                 self.storm_count += 1
                 self.mana_pool -= card_mv
@@ -938,7 +1146,14 @@ class Gamestate:
                     )
 
                 if verbose: print(f'Land! {card} > battlefield')
+                self.THRAS_LANDS_HIT += 1
 
+                if self.SPRINGHEART_FLAG:
+                    self.battlefield.append("Creature Token")
+                
+                    if verbose: 
+                        print(f'Landfall Trigger! Created a Creature Token.')
+                        self.LANDFALL_TRIGGERS += 1
                 return True
             
             #-------------------------------------------------------------------
@@ -960,8 +1175,6 @@ class Gamestate:
                 if verbose: print(f'Miss. {card} > hand')
                 return False
         #-----------------------------------------------------------------------
-
-
         # check available mana
         if self.mana_pool >= self.thrasios_cost:
             self.mana_pool -= self.thrasios_cost
@@ -972,8 +1185,7 @@ class Gamestate:
         PLAYED_FLAG = assess_card(position = 0)
         if not PLAYED_FLAG:
             PLAYED_FLAG = assess_card(position = 1)
-        
-
+    
     #----------------------------------------------------------------------------
     def activate_oboro(self, verbose = False):
         '''
@@ -1044,18 +1256,13 @@ class Gamestate:
 
         self.mana_pool += num_battlefield_creatures
         
-        thras_acts = 0
-        oboro_acts = 0
-        
         self.print_log()
         while (not self.FIZZLE_FLAG) and (not self.WIN_FLAG):
             
             if self.mana_pool >= self.thrasios_cost + self.oboro_cost:
                 self.activate_thrasios(verbose = True)
-                thras_acts += 1
             else:
                 self.activate_oboro(verbose = True)
-                oboro_acts += 1
 
             # Check hand for combos
             # Check hand for any creatures that we may have picked up that 
@@ -1065,14 +1272,15 @@ class Gamestate:
         
         if self.calc_max_mana() == 5:
             self.activate_thrasios(verbose = True)
-            thras_acts += 1
             self.print_log()
 
 
-        print(f'Thrasios Activations: {thras_acts}')
-        print(f'Oboro Activations: {oboro_acts}')
+        print("END GAME INSTANCE")
+        print("-------------------------------------------------------------------")
 #-------------------------------------------------------------------------------
 if __name__ == "__main__":
+    
+    max_trials = 10000
     decklist = read_decklist_file(path = 'decklist.txt')
     game = Gamestate(decklist = decklist,
         specific = {
@@ -1091,13 +1299,18 @@ if __name__ == "__main__":
         random_adds = {
             # location : card type : [amount, [cards to exclude]]
             'battlefield' : {
-                'creature': [3, ["Dryad Arbor"]],
+                'creature': [3, ["Dryad Arbor", "Biomancer's Familiar"]],
                 'land': [3, ["Dryad Arbor", "Talon Gates of Madara"]],
                 },
             },
-        mana_pool = 3,
+        mana_pool = 2,
         )
-    game.grind()
+
+    for trial in tqdm(range(max_trials), desc='Simulating Games'):
+        current_game = copy.deepcopy(game)
+        current_game.shuffle_deck()        
+
+        current_game.grind()
     #game.calc_max_mana()
 
 
