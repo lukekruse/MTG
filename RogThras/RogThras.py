@@ -75,13 +75,15 @@ ALL_CARDS = {
     "Green Sun's Zenith"                : [10, 1000, 10],
     "Malevolent Rumble"                 : [10, 0, 2],
     "Nature's Rhythm"                   : [10, 1000, 10],
-    "Song of Totentanz"                 : [11, 100, 2],
+    "Song of Totentanz"                 : [10, 100, 2],
     "Step Through"                      : [10, 1000, 2],
     "Sylvan Scrying"                    : [10, 10000, 2],
     "Tempt with Discovery"              : [10, 10000, 4],
     "Traverse the Ulvenwald"            : [10, 0, 1],
-    "Invasion of Ikoria"                : [10, 1000, 10],
 
+    # Battles
+    "Invasion of Ikoria"                : [10, 1000, 10],
+    
     # Instants
     "Banishing Knack"                   : [100, 0, 1],
     "Borne Upon a Wind"                 : [100, 0, 2],
@@ -230,7 +232,12 @@ x Confirm we still have enough mana to win if TGoM gets thrasios'ed into play
 
 x When determining if we go for a line that uses crop rot we need to use a 
   max_mana_remaining that leaves one non-cradle land in play.
+    - I think this bug is quashed with the addition of the LEAVE_ONE_FLAG 
+      portion of the calc_max_mana function and its inclusion in the logic
+      for crop rot lines.
 
+- When we cast Chatterstom we should check to see if we can up the storm count
+  with any cards that thrasios put into our hand.
 
 '''
 #-------------------------------------------------------------------------------
@@ -357,6 +364,8 @@ class Gamestate:
             1) Mana currently in the mana pool or
             2) can be produced from Oboro/cradle activations
         
+        When the LEAVE_ONE_FLAG is set to True, this function calculates the max
+        mana that can be generated leaving one (non-cradle) land in play.
         '''
         # Create a temporary instance of the current boardstate
         gamestate_copy = copy.deepcopy(self)
@@ -404,6 +413,14 @@ class Gamestate:
         card_type:str,
         source,
         ):
+        '''
+        PURPOSE
+        This function calculates the number of cards of a specified card_type in
+        a given location.
+
+        USAGE
+        -   Used to determine cradle counts
+        '''
         if card_type == 'all':
             matches = source
         
@@ -424,12 +441,24 @@ class Gamestate:
         source,
         dest,
         ):
-        
+        '''
+
+        POTENTIAL BUGS
+        This function may fail to perform as desired when trying to move a 
+        token from the battlefield to any other location where it should cease to 
+        exist
+        '''
         for card in cards_to_move:
             if 'Token' not in card:
                 source.remove(card)
                 dest.append(card)
 
+            else:
+                dest.append(card)
+                if card in source:
+                    source.remove(card)
+
+        return None
     #----------------------------------------------------------------------------
     def move_random(self, 
         card_type:str,
@@ -443,7 +472,7 @@ class Gamestate:
         PURPOSE
         Move random cards of a certain type from one location to another.
 
-        EXAMPLE USAGE
+        USAGE
         -   Used in setup of a gamestate to place creatures and lands onto the 
             battlefield.
         -   Used by oboro_activation to return a random land to hand
@@ -816,11 +845,16 @@ class Gamestate:
                 and not \
                 (
                     (oboro_acts_remaining  == 0) and \
-                    (self.mana_pool <= self.oboro_cost + self.thrasios_cost + card_mv)
+                    (self.mana_pool <= self.oboro_cost + self.thrasios_cost + \
+                        card_mv)
                     )
                 ):
                 '''
                 Chatterstorm will almost always be worth casting
+                
+                ASSUMPTIONS
+                Cast Chatterstorm even if we have only cradle and enough mana to
+                try and get a lucky flip from thrasios and oboro to untap.
                 '''
                 self.move_specific(
                     cards_to_move = [card],
@@ -1048,7 +1082,6 @@ if __name__ == "__main__":
                 "Rograkh, Son of Rohgahh",
                 "Thrasios, Triton Hero", 
                 "Oboro Breezecaller",
-                "Creature Token",
                 ],
             'graveyard' :[
                 "Flooded Strand",
