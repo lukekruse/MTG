@@ -173,37 +173,64 @@ ALL_CARDS = {
 
 '''
 TO DO:
-- Land tutors are wincons. I think incorporating these at a minimum would 
-  much better model a manual goldfish. This could be split into to-hand 
-  (cost + 5x mana) or to-battlefield (cost + 1x mana, with + 1x land for Crop 
-  rot), or even manually coded as there's a limited number of them.,
+
+- Special Cards
+    - Cloud of Faeries
+    - Springheart Nantuko
+    - Thundertrap Trainer
+
+    x Chatterstorm
+    - Malevolent Rumble
+    
+    - Snap
+    - Frantic Search
+
+
+- Land tutors are wincons. 
+    I think incorporating these at a minimum would 
+    much better model a manual goldfish. This could be split into to-hand 
+    (cost + 5x mana) or to-battlefield (cost + 1x mana, with + 1x land for Crop 
+    rot), or even manually coded as there's a limited number of them.,
+    
+    Examples
+
+    - Crop Rotation
+    x Sylvan Scrying
+    - Gamble
+    x Tempt with Discovery
+    - Traverse the Ulvenwald
+
 - creature tutors are soft wincons with limited mana, and hard wincons with 
   heaps of mana. If you have lots of mana/lands, go for spellseeker>Crop rot
   /sylvan scrying>win. If you only have a bit of mana, go for biomancer.,
-- Less important, but i think adding an initial step to check for "playable" 
-  cards in hand, and playing them if you have enough mana (including thras spin + 
-  oboro) would help the odds. Currently, my understanding is that finding a dork 
-  when you are low on resources means the dork is just stuck in your hand.,
+    - Nature's Rhythm
+    - Invasion of Ikoria
+    - Finale of Devastation
+    - Spellseeker
+
+
+- Check for playable cards in hand
+    Less important, but i think adding an initial step to check for "playable" 
+    cards in hand, and playing them if you have enough mana (including thras spin + 
+    oboro) would help the odds. Currently, my understanding is that finding a dork 
+    when you are low on resources means the dork is just stuck in your hand.,
+
+    - Rocks / Rituals
+
 - Would be nice to get a way to change the initial conditions without having to 
   update the underlying code. Not critical though.,
+
 - Would be nice to get a line at the end that says success or failed,
+
 - And lastly, how do we run this 10000x?
-- Confirm we still have enough mana to win if TGoM gets thrasios'ed into play
 
-Lines:
-    Crop Rotation
 
-    Spellseeker > Crop Rotation 
-        Requirements 
-            Mana Cost: 4 + 2-1, 2UG + 2-1 
-                # 2U SS, G for Crop Rot, 2 for Oboro - 1 from TGoM 
-            Hand: Spellseeker
-            Library: Crop Rotation, Talon Gates of Madara
-            Battlefield:
-                Lands: [Gaea's Cradle, X]
-            Cradle Count: 6,
-    
-    Spellseeker > 
+POTENTIAL BUGS
+x Confirm we still have enough mana to win if TGoM gets thrasios'ed into play
+
+x When determining if we go for a line that uses crop rot we need to use a 
+  max_mana_remaining that leaves one non-cradle land in play.
+
 
 '''
 #-------------------------------------------------------------------------------
@@ -269,6 +296,7 @@ class Gamestate:
         self.storm_count = 0
 
         self.FIZZLE_FLAG = False
+        self.WIN_FLAG = False
 
         self.LOC_TYPES = {
             'battlefield'   : self.battlefield,
@@ -319,7 +347,7 @@ class Gamestate:
         print('\n')
     
     #----------------------------------------------------------------------------
-    def calc_max_mana(self):
+    def calc_max_mana(self, LEAVE_ONE_FLAG = False):
         '''
         PURPOSE
         The purpose of this function is to calculate the maximum amount of mana
@@ -332,9 +360,25 @@ class Gamestate:
         '''
         # Create a temporary instance of the current boardstate
         gamestate_copy = copy.deepcopy(self)
-        while not gamestate_copy.FIZZLE_FLAG:
-            gamestate_copy.activate_oboro(verbose = False)
+        if not LEAVE_ONE_FLAG:
+            while not gamestate_copy.FIZZLE_FLAG:
+                gamestate_copy.activate_oboro(verbose = False)
         
+        else:
+            # Get Oboro Activations remaining
+            _, copy_battlefield_lands = gamestate_copy.count_types(
+                card_type = 'land', 
+                source = gamestate_copy.battlefield,
+                )
+            copy_oboro_lands = []
+            for land in copy_battlefield_lands:
+                if land not in ["Gaea's Cradle"]:
+                    copy_oboro_lands.append(land)
+            
+            # Activate oboro but leave one
+            for _ in range(len(copy_oboro_lands) - 1):
+                gamestate_copy.activate_oboro(verbose = False)
+
         return gamestate_copy.mana_pool
     #----------------------------------------------------------------------------
     def shuffle_deck(self):
@@ -459,10 +503,22 @@ class Gamestate:
                 if land not in ["Gaea's Cradle", "Dryad Arbor"]:
                     oboro_lands.append(land)
             
+            # Update cradle count
+            num_battlefield_creatures, _ = self.count_types(
+                card_type = 'creature', 
+                source = self.battlefield,
+                )
+            
             oboro_acts_remaining = len(oboro_lands)
+            current_max_mana = self.calc_max_mana()
+            penult_max_mana = self.calc_max_mana(LEAVE_ONE_FLAG = True)
+            TGOM_FLAG = "Talon Gates of Madara" in self.library
 
+            #-------------------------------------------------------------------
             if int(card_spec_id) % 10 == 1:
-                # top card is Talon Gates, choose to put into play
+                '''
+                The top card is Talon Gates, choose to put into play
+                '''
                 self.move_specific(
                     cards_to_move = [card],
                     source = self.library,
@@ -472,22 +528,32 @@ class Gamestate:
                 if verbose:
                     if (self.calc_max_mana() >= 1): 
                         print(f'Win! {card} > battlefield')
+                        self.WIN_FLAG = True
                     else:
                         print(f'Close but no cigar.')
+                        self.FIZZLE_FLAG = True
 
-                self.FIZZLE_FLAG = True
                 return True
-                
+            
+            #-------------------------------------------------------------------
             elif (int(card_spec_id/10) % 10 == 1) and \
-                (((self.mana_pool - card_mv >= 1) and (oboro_acts_remaining >= 1)) or \
-                    ((self.mana_pool >= 2) and (oboro_acts_remaining >= 2))
+                (
+                    (
+                        (self.mana_pool - card_mv >= 1) and \
+                        (oboro_acts_remaining >= 1)
+                    ) or \
+                    (
+                        (self.mana_pool >= self.oboro_cost) and \
+                        (oboro_acts_remaining >= 2)
+                    )
                 ):
-                # Top card is a cost reducer, choose to put into hand if we 
-                # either 
-                # 1) have enough mana to activate oboro afterwards or 
-                # 2) can activate oboro, cast the cost reducer, then activate 
-                #    oboro again
-
+                '''
+                Top card is a cost reducer, choose to put into hand if we 
+                either 
+                1) have enough mana to activate oboro afterwards or 
+                2) can activate oboro, cast the cost reducer, then activate 
+                   oboro again
+                '''
                 if verbose: print(f'Cost Reducer! {card} > battlefield')
 
                 if (self.mana_pool - card_mv <= 0):
@@ -507,6 +573,279 @@ class Gamestate:
 
                 return True
 
+            #-------------------------------------------------------------------
+            elif (
+                (card in ["Crop Rotation"])
+                and \
+                (penult_max_mana >= 1)
+                and \
+                ((oboro_acts_remaining >= 1) or ('Dryad Arbor' in self.battlefield))
+                # ensures that we have a land to sac
+                and \
+                (num_battlefield_creatures >= 6)
+                and \
+                TGOM_FLAG
+                ):
+                '''
+                Crop Rot for win
+                '''
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.graveyard,
+                    )
+                
+                self.storm_count += 1
+                if verbose: 
+                    print(f'Win! {card} line is available.')
+                
+                self.WIN_FLAG = True
+                return True
+            #-------------------------------------------------------------------
+            elif (
+                (card == "Trinket Mage")
+                and \
+                (num_battlefield_creatures >= 5)
+                and \
+                TGOM_FLAG
+                and \
+                ("Expedition Map" in self.library)
+                and \
+                (current_max_mana >= 11)
+                ):
+                '''
+                '''
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.graveyard,
+                    )
+                
+                self.storm_count += 1
+                if verbose: 
+                    print(f'Win! {card} line is available.')
+                
+                self.WIN_FLAG = True
+                return True
+            #-------------------------------------------------------------------
+            elif (
+                (card == 'Spellseeker')
+                and \
+                (num_battlefield_creatures >= 5)
+                and \
+                TGOM_FLAG
+                and \
+                (
+                    (
+                        ((oboro_acts_remaining >= 1) or ('Dryad Arbor' in self.battlefield)) and \
+                        ("Crop Rotation" in self.library) and \
+                        (penult_max_mana >= 4)
+                    ) or \
+                    (
+                        ("Sylvan Scrying" in self.library) and \
+                        (current_max_mana >= 10)
+                    )
+                )
+                ):
+                '''
+                '''
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.graveyard,
+                    )
+                
+                self.storm_count += 1
+                if verbose: 
+                    print(f'Win! {card} line is available.')
+                
+                self.WIN_FLAG = True
+                return True
+            #-------------------------------------------------------------------
+            elif (
+                (card in ["Nature's Rhythm", "Finale of Devastation", 
+                    "Invasion of Ikoria"])
+                and \
+                (num_battlefield_creatures >= 5)
+                and \
+                TGOM_FLAG
+                and \
+                ("Spellseeker" in self.library)
+                and \
+                (
+                    (
+                        ((oboro_acts_remaining >= 1) or ('Dryad Arbor' in self.battlefield)) and \
+                        ("Crop Rotation" in self.library) and \
+                        (penult_max_mana >= 6)
+                    ) or \
+                    (
+                        ("Sylvan Scrying" in self.library) and \
+                        (current_max_mana >= 12)
+                    )
+                )
+                ):
+                '''
+                '''
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.graveyard,
+                    )
+                
+                self.storm_count += 1
+                if verbose: 
+                    print(f'Win! {card} line is available.')
+                
+                self.WIN_FLAG = True
+                return True
+            #-------------------------------------------------------------------
+            elif (
+                (card == "Chord of Calling")
+                and \
+                (num_battlefield_creatures >= 5)
+                and \
+                TGOM_FLAG
+                and \
+                ("Spellseeker" in self.library)
+                and \
+                (
+                    (
+                        ("Crop Rotation" in self.library) and \
+                        (penult_max_mana >= 7)
+                        and \
+                        ((oboro_acts_remaining >= 1) or ('Dryad Arbor' in self.battlefield))
+                    ) or \
+                    (
+                        ("Sylvan Scrying" in self.library) and \
+                        (current_max_mana >= 13)
+                    )
+                )
+                ):
+                '''
+                Chord > Crop Rot for win
+                '''
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.graveyard,
+                    )
+                
+                self.storm_count += 1
+                if verbose: 
+                    print(f'Win! {card} line is available.')
+                
+                self.WIN_FLAG = True
+                return True
+            #-------------------------------------------------------------------
+            elif (
+                (card in ["Sowing Mycospawn"])
+                and \
+                (current_max_mana >= 5)
+                and \
+                (num_battlefield_creatures >= 5)
+                and \
+                TGOM_FLAG
+                ):
+                '''
+                Sowing Mycospawn tutor for win
+                '''
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.graveyard,
+                    )
+                
+                self.storm_count += 1
+                if verbose: 
+                    print(f'Win! {card} line is available.')
+                
+                self.WIN_FLAG = True
+                return True
+            #-------------------------------------------------------------------
+            elif (
+                (card in ["Expedition Map"])
+                and \
+                (current_max_mana >= 8)
+                and \
+                (num_battlefield_creatures >= 6)
+                and \
+                TGOM_FLAG
+                ):
+                '''
+                '''
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.graveyard,
+                    )
+                
+                self.storm_count += 1
+                if verbose: 
+                    print(f'Win! {card} line is available.')
+                
+                self.WIN_FLAG = True
+                return True
+            #-------------------------------------------------------------------
+            elif (
+                (card in ["Tempt with Discovery"])
+                and \
+                (current_max_mana >= 5)
+                and \
+                (num_battlefield_creatures >= 6)
+                and \
+                TGOM_FLAG
+                ):
+                '''
+                Tempt with Discovery can tutor for win
+                '''
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.graveyard,
+                    )
+                
+                self.storm_count += 1
+                if verbose: 
+                    print(f'Win! {card} line is available.')
+                
+                self.WIN_FLAG = True
+                return True
+            #-------------------------------------------------------------------
+            elif (
+                (card == "Chatterstorm")
+                and not \
+                (
+                    (oboro_acts_remaining  == 0) and \
+                    (self.mana_pool <= self.oboro_cost + self.thrasios_cost + card_mv)
+                    )
+                ):
+                '''
+                Chatterstorm will almost always be worth casting
+                '''
+                self.move_specific(
+                    cards_to_move = [card],
+                    source = self.library,
+                    dest = self.graveyard,
+                    )
+                
+                if (self.mana_pool - card_mv < self.oboro_cost):
+                    # Activate oboro then cast creature
+                    self.activate_oboro(verbose = True)
+                
+                self.storm_count += 1
+                self.mana_pool -= card_mv
+
+                for _ in range(self.storm_count):
+                    self.battlefield.append("Creature Token")
+                
+                if verbose: 
+                    print(
+                        f'Found {card}! Created {self.storm_count} '+\
+                        'Creature Tokens.'
+                        )
+                
+                return True
+            #-------------------------------------------------------------------
             elif (
                     (int(card_type_id) % 10 > 0) and \
                     (card != "Dryad Arbor")
@@ -518,23 +857,24 @@ class Gamestate:
                         ) or \
                     (card_mv <= oboro_acts_remaining - 1)
                 ):
+                '''
+                If the top card is a non-dryad arbor creature 
+                And  either 
+                (1) its mana value is less than the number of remaining Oboro 
+                      activations we have and we can cast it with floating mana
+                      and still activate oboro afterwards
+                OR
                 
-                # If the top card is a non-dryad arbor creature 
-                # And  either 
-                # (1) its mana value is less than the number of remaining Oboro 
-                #       activations we have and we can cast it with floating mana
-                #       and still activate oboro afterwards
-                # OR
-                #
-                # (2) its mana value is less than one minus the number of 
-                #       remaining oboro activations,
-                # then we should take it and cast it in case we hit another land
-                # later on.
-                #
-                # This should also consider the case where we need to 
-                # activate the Oboro to have enough mana to case the creature and 
-                # still have enough remaining Oboro activations to go mana neutral
-                # from the exchange.
+                (2) its mana value is less than one minus the number of 
+                      remaining oboro activations,
+                then we should take it and cast it in case we hit another land
+                later on.
+                
+                This should also consider the case where we need to 
+                activate the Oboro to have enough mana to case the creature and 
+                still have enough remaining Oboro activations to go mana neutral
+                from the exchange.
+                '''
                 self.move_specific(
                     cards_to_move = [card],
                     source = self.library,
@@ -552,8 +892,11 @@ class Gamestate:
                 
                 return True
 
+            #-------------------------------------------------------------------
             elif int(card_type_id / 100000)  % 10 > 0:
-                # top card is a land, choose to put into play
+                '''
+                Land found, choose to put into play
+                '''
                 self.move_specific(
                     cards_to_move = [card],
                     source = self.library,
@@ -564,6 +907,7 @@ class Gamestate:
 
                 return True
             
+            #-------------------------------------------------------------------
             elif position == 0:
                 # Move card to bottom
 
@@ -572,6 +916,7 @@ class Gamestate:
                 if verbose: print(f'Miss. {card} > bottom')
                 return False
 
+            #-------------------------------------------------------------------
             elif position == 1:
                 self.move_specific(
                     cards_to_move = [card],
@@ -665,27 +1010,11 @@ class Gamestate:
 
         self.mana_pool += num_battlefield_creatures
         
-        '''
-        #   count number of lands 
-        num_battlefield_lands, battlefield_lands = self.count_types(
-            card_type = 'land', 
-            source = self.battlefield,
-            )
-        #   ! Assume the other lands we have add 1
-        self.mana_pool += num_battlefield_lands - 1
-        #       Correct for Ancient Tomb
-        if "Ancient Tomb" in battlefield_lands:
-            self.mana_pool += 1
-        # Need to account for fetches. This would be a PITA so just require
-        # the user to increase the initial value of mana_pool to account
-        # for this.
-        '''
-
         thras_acts = 0
         oboro_acts = 0
         
         self.print_log()
-        while not self.FIZZLE_FLAG:
+        while (not self.FIZZLE_FLAG) and (not self.WIN_FLAG):
             
             if self.mana_pool >= self.thrasios_cost + self.oboro_cost:
                 self.activate_thrasios(verbose = True)
@@ -699,6 +1028,12 @@ class Gamestate:
             # we now have enough mana to cast efficiently
 
             self.print_log()
+        
+        if self.calc_max_mana() == 5:
+            self.activate_thrasios(verbose = True)
+            thras_acts += 1
+            self.print_log()
+
 
         print(f'Thrasios Activations: {thras_acts}')
         print(f'Oboro Activations: {oboro_acts}')
