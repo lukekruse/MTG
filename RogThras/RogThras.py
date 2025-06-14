@@ -9,6 +9,9 @@ import copy
 from tqdm import tqdm
 from pprint import pprint
 
+from ManaPool import ManaPool
+from GeneralFunctions import *
+
 REV_CARD_TYPES = {
     1          :'creature',
     10         :'sorcery',
@@ -35,145 +38,145 @@ SPECIAL_TYPES = dict((val, key) for key, val in REV_SPECIAL_TYPES.items())
 
 ALL_CARDS = {
     # Commanders
-    "Rograkh, Son of Rohgahh"           : [1, 0, 0], 
-    "Thrasios, Triton Hero"             : [1, 0, 2], 
+    "Rograkh, Son of Rohgahh"           : [1, 0, 0, ''], 
+    "Thrasios, Triton Hero"             : [1, 0, 2, "ug"], 
     
     # Tokens
-    "Creature Token"                    : [1, 0, 0],
+    "Creature Token"                    : [1, 0, 0, ''],
 
     # Creatures
-    "Arbor Elf"                         : [1, 0, 1], 
-    "Biomancer's Familiar"              : [1, 10, 2], 
-    "Birds of Paradise"                 : [1, 0, 1], 
-    "Clever Impersonator"               : [1, 0, 4], 
-    "Cloud of Faeries"                  : [1, 100, 2], 
-    "Delighted Halfling"                : [1, 0, 1],
-    "Displacer Kitten"                  : [1, 200, 4], 
-    "Druid of Purification"             : [1, 0, 4],
-    "Enduring Vitality"                 : [1, 0, 3], 
-    "Eternal Witness"                   : [1, 1000000, 3], 
-    "Faerie Mastermind"                 : [1, 0, 2], 
-    "Flesh Duplicate"                   : [1, 0, 2],
-    "Gilded Drake"                      : [1, 0, 2],
-    "Magus of the Candelabra"           : [1, 0, 1], 
-    "Mockingbird"                       : [1, 0, 2],
-    "Oboro Breezecaller"                : [1, 1, 2], 
-    "Phantasmal Image"                  : [1, 0, 2],
-    "Phyrexian Metamorph"               : [1, 0, 4],
-    "Seedborn Muse"                     : [1, 0, 5], 
-    "Sowing Mycospawn"                  : [1, 0, 4], 
-    "Spellseeker"                       : [1, 0, 3], 
-    "Spellskite"                        : [1, 0, 2],
-    "Springheart Nantuko"               : [1, 0, 2], 
-    "Thundertrap Trainer"               : [1, 0, 2], 
-    "Trinket Mage"                      : [1, 0, 3], 
-    "Valley Floodcaller"                : [1, 0, 3], 
-    "Wall of Roots"                     : [1, 0, 2],
+    "Arbor Elf"                         : [1, 0, 1, 'g'], 
+    "Biomancer's Familiar"              : [1, 10, 2, 'ug'], 
+    "Birds of Paradise"                 : [1, 0, 1, 'g'], 
+    "Clever Impersonator"               : [1, 0, 4, 'yyuu'], 
+    "Cloud of Faeries"                  : [1, 100, 2, 'yu'], 
+    "Delighted Halfling"                : [1, 0, 1, 'g'],
+    "Displacer Kitten"                  : [1, 200, 4, 'yyyu'], 
+    "Druid of Purification"             : [1, 0, 4, 'yyyg'],
+    "Enduring Vitality"                 : [1, 0, 3, 'ygg'], 
+    "Eternal Witness"                   : [1, 1000000, 3, 'ygg'], 
+    "Faerie Mastermind"                 : [1, 0, 2, 'yu'], 
+    "Flesh Duplicate"                   : [1, 0, 2, 'uu'],
+    "Gilded Drake"                      : [1, 0, 2, 'yu'],
+    "Magus of the Candelabra"           : [1, 0, 1, 'g'], 
+    "Mockingbird"                       : [1, 0, 2, 'xu'],
+    "Oboro Breezecaller"                : [1, 1, 2, 'yu'], 
+    "Phantasmal Image"                  : [1, 0, 2, 'yu'],
+    "Phyrexian Metamorph"               : [1, 0, 3, 'yyy'],
+    "Seedborn Muse"                     : [1, 0, 5, 'yyygg'], 
+    "Sowing Mycospawn"                  : [1, 0, 4, 'yyyg'], 
+    "Spellseeker"                       : [1, 0, 3, 'yyu'], 
+    "Spellskite"                        : [1, 0, 2, 'yy'],
+    "Springheart Nantuko"               : [1, 0, 2, 'yg'], 
+    "Thundertrap Trainer"               : [1, 0, 2, 'yu'], 
+    "Trinket Mage"                      : [1, 0, 3, 'yyu'], 
+    "Valley Floodcaller"                : [1, 0, 3, 'yyu'], 
+    "Wall of Roots"                     : [1, 0, 2, 'yg'],
 
     # Sorceries
-    "Chatterstorm"                      : [10, 100, 2],
-    "Eldritch Evolution"                : [10, 1000, 3],
-    "Finale of Devastation"             : [10, 1000, 10],
-    "Gamble"                            : [10, 100000, 1],
-    "Green Sun's Zenith"                : [10, 1000, 10],
-    "Malevolent Rumble"                 : [10, 0, 2],
-    "Nature's Rhythm"                   : [10, 1000, 10],
-    "Song of Totentanz"                 : [10, 100, 2],
-    "Step Through"                      : [10, 1000, 2],
-    "Sylvan Scrying"                    : [10, 10000, 2],
-    "Tempt with Discovery"              : [10, 10000, 4],
-    "Traverse the Ulvenwald"            : [10, 0, 1],
+    "Chatterstorm"                      : [10, 100, 2,'yg'],
+    "Eldritch Evolution"                : [10, 1000, 3, 'ygg'],
+    "Finale of Devastation"             : [10, 1000, 10, 'xgg'],
+    "Gamble"                            : [10, 100000, 1,'r'],
+    "Green Sun's Zenith"                : [10, 1000, 10,'xg'],
+    "Malevolent Rumble"                 : [10, 0, 2,'yg'],
+    "Nature's Rhythm"                   : [10, 1000, 10,'xgg'],
+    "Song of Totentanz"                 : [10, 100, 2,'xr'],
+    "Step Through"                      : [10, 1000, 2,'yy'],
+    "Sylvan Scrying"                    : [10, 10000, 2,'yg'],
+    "Tempt with Discovery"              : [10, 10000, 4,'yyyg'],
+    "Traverse the Ulvenwald"            : [10, 0, 1,'g'],
 
     # Battles
-    "Invasion of Ikoria"                : [10, 1000, 10],
+    "Invasion of Ikoria"                : [10, 1000, 10,'xgg'],
     
     # Instants
-    "Banishing Knack"                   : [100, 0, 1],
-    "Borne Upon a Wind"                 : [100, 0, 2],
-    "Brain Freeze"                      : [100, 0, 2],
-    "Chain of Vapor"                    : [100, 100, 1],
-    "Chord of Calling"                  : [100, 1000, 10],
-    "Crop Rotation"                     : [100, 10000, 1],
-    "Cyclonic Rift"                     : [100, 0, 2],
-    "Deflecting Swat"                   : [100, 0, 0],
-    "Fierce Guardianship"               : [100, 0, 0],
-    "Flare of Denial"                   : [100, 0, 0],
-    "Flare of Duplication"              : [100, 0, 0],
-    "Flusterstorm"                      : [100, 0, 1],
-    "Force of Will"                     : [100, 0, 0],
-    "Frantic Search"                    : [100, 100, 3],
-    "Mental Misstep"                    : [100, 0, 0],
-    "Mindbreak Trap"                    : [100, 0, 0],
-    "Noxious Revival"                   : [100, 1000000, 0],
-    "Pact of Negation"                  : [100, 0, 0],
-    "Snap"                              : [100, 100, 1],
-    "Swan Song"                         : [100, 0, 0],
-    "This Town Ain't Big Enough"        : [100, 0, 2],
-    "Veil of Summer"                    : [100, 0, 1],
+    "Banishing Knack"                   : [100, 0, 1, 'u'],
+    "Borne Upon a Wind"                 : [100, 0, 2, 'yu'],
+    "Brain Freeze"                      : [100, 0, 2, 'yu'],
+    "Chain of Vapor"                    : [100, 100, 1, 'u'],
+    "Chord of Calling"                  : [100, 1000, 10, 'xggg'],
+    "Crop Rotation"                     : [100, 10000, 1, 'g'],
+    "Cyclonic Rift"                     : [100, 0, 2, 'yu'],
+    "Deflecting Swat"                   : [100, 0, 0, 'yyr'],
+    "Fierce Guardianship"               : [100, 0, 0, 'yyu'],
+    "Flare of Denial"                   : [100, 0, 0, 'yuu'],
+    "Flare of Duplication"              : [100, 0, 0, 'urr'],
+    "Flusterstorm"                      : [100, 0, 1, 'u'],
+    "Force of Will"                     : [100, 0, 0, 'yyyuu'],
+    "Frantic Search"                    : [100, 100, 3, 'yyu'],
+    "Mental Misstep"                    : [100, 0, 0, 'u'],
+    "Mindbreak Trap"                    : [100, 0, 0, 'yyuu'],
+    "Noxious Revival"                   : [100, 1000000, 0, 'g'],
+    "Pact of Negation"                  : [100, 0, 0, ''],
+    "Snap"                              : [100, 100, 1, 'yu'],
+    "Swan Song"                         : [100, 0, 0, 'u'],
+    "This Town Ain't Big Enough"        : [100, 0, 2, 'yu'],
+    "Veil of Summer"                    : [100, 0, 1, 'g'],
 
     # Artifacts
-    "Candelabra of Tawnos"              : [1000, 100, 1],
-    "Chrome Mox"                        : [1000, 100, 0],
-    "Expedition Map"                    : [1000, 10000, 1],
-    "Lion's Eye Diamond"                : [1000, 100, 0],
-    "Lotus Petal"                       : [1000, 100, 0],
-    "Machine God's Effigy"              : [1000, 0, 4],
-    "Mana Vault"                        : [1000, 100, 1],
-    "Mox Amber"                         : [1000, 100, 0],
-    "Mox Diamond"                       : [1000, 200, 0],
-    "Sol Ring"                          : [1000, 100, 1],
-    "Springleaf Drum"                   : [1000, 0, 1],
-    "The One Ring"                      : [1000, 0, 4],
+    "Candelabra of Tawnos"              : [1000, 100, 1, 'y'],
+    "Chrome Mox"                        : [1000, 100, 0, ''],
+    "Expedition Map"                    : [1000, 10000, 1, 'y'],
+    "Lion's Eye Diamond"                : [1000, 100, 0, ''],
+    "Lotus Petal"                       : [1000, 100, 0, ''],
+    "Machine God's Effigy"              : [1000, 0, 4, 'yyyu'],
+    "Mana Vault"                        : [1000, 100, 1, 'y'],
+    "Mox Amber"                         : [1000, 100, 0, ''],
+    "Mox Diamond"                       : [1000, 200, ''],
+    "Sol Ring"                          : [1000, 100, 1, 'y'],
+    "Springleaf Drum"                   : [1000, 0, 1, 'y'],
+    "The One Ring"                      : [1000, 0, 4, 'yyyy'],
 
     # Enchantments
-    "Cryptolith Rite"                   : [10000, 0, 2],
-    "Earthcraft"                        : [10000, 200, 2],
-    "Growing Rites of Itlimoc"          : [10000, 0, 3],
-    "Mystic Remora"                     : [10000, 0, 1],
-    "Rhystic Study"                     : [10000, 0, 3],
-    "Song of Creation"                  : [10000, 0, 4],
-    "Stormchaser's Talent"              : [10001, 0, 1],
-    "Training Grounds"                  : [10000, 10, 1],
-    "Underworld Breach"                 : [10000, 0, 2],
-    "Wild Growth"                       : [10000, 200, 1],
+    "Cryptolith Rite"                   : [10000,   0, 2, 'yg'],
+    "Earthcraft"                        : [10000, 200, 2, 'yg'],
+    "Growing Rites of Itlimoc"          : [10000,   0, 3, 'yyg'],
+    "Mystic Remora"                     : [10000,   0, 1, 'u'],
+    "Rhystic Study"                     : [10000,   0, 3, 'yyu'],
+    "Song of Creation"                  : [10000,   0, 4, 'yrug'],
+    "Stormchaser's Talent"              : [10001,   0, 1, 'u'],
+    "Training Grounds"                  : [10000,  10, 1, 'u'],
+    "Underworld Breach"                 : [10000,   0, 2, 'yr'],
+    "Wild Growth"                       : [10000, 200, 1, 'g'],
 
     # Lands
-    "Alchemist's Refuge"                : [100000, 0, 0],
-    "Ancient Tomb"                      : [100000, 0, 0],
-    "Boseiju, Who Endures"              : [100000, 0, 0],
-    "Breeding Pool"                     : [100000, 0, 0],
-    "Cephalid Coliseum"                 : [100000, 0, 0],
-    "Command Tower"                     : [100000, 0, 0],
-    "Deserted Temple"                   : [100000, 0, 0],
-    "Dryad Arbor"                       : [100001, 0, 0],
-    "Emergence Zone"                    : [100000, 0, 0],
-    "Flooded Grove"                     : [100000, 0, 0],
-    "Flooded Strand"                    : [100000, 0, 0],
-    "Forest"                            : [100000, 0, 0],
-    "Gaea's Cradle"                     : [100000, 0, 0],
-    "Gemstone Caverns"                  : [100000, 0, 0],
-    "Island"                            : [100000, 0, 0],
-    "Mana Confluence"                   : [100000, 0, 0],
-    "Minamo, School at Water's Edge"    : [100000, 0, 0],
-    "Mistrise Village"                  : [100000, 0, 0],
-    "Misty Rainforest"                  : [100000, 0, 0],
-    "Otawara, Soaring City"             : [100000, 0, 0],
-    "Polluted Delta"                    : [100000, 0, 0],
-    "Prismatic Vista"                   : [100000, 0, 0],
-    "Scalding Tarn"                     : [100000, 0, 0],
-    "Shifting Woodland"                 : [100000, 0, 0],
-    "Snow-Covered Forest"               : [100000, 0, 0],
-    "Snow-Covered Island"               : [100000, 0, 0],
-    "Taiga"                             : [100000, 0, 0],
-    "Talon Gates of Madara"             : [100000, 1, 0],
-    "Tropical Island"                   : [100000, 0, 0],
-    "Urza's Cave"                       : [100000, 0, 0],
-    "Urza's Saga"                       : [100000, 0, 0],
-    "Verdant Catacombs"                 : [100000, 0, 0],
-    "Volcanic Island"                   : [100000, 0, 0],
-    "Windswept Heath"                   : [100000, 0, 0],
-    "Wooded Foothills"                  : [100000, 0, 0],
-    "Yavimaya, Cradle of Growth"        : [100000, 0, 0],
+    "Alchemist's Refuge"                : [100000, 0, 0, '', ['c'],],
+    "Ancient Tomb"                      : [100000, 0, 0, '', [{'cc':{'life':2}}],],
+    "Boseiju, Who Endures"              : [100000, 0, 0, '', ['g'],],
+    "Breeding Pool"                     : [100000, 0, 0, '', ['g', 'u'],],
+    "Cephalid Coliseum"                 : [100000, 0, 0, '', [{'u':{'life':1}}],],
+    "Command Tower"                     : [100000, 0, 0, '', ['c', 'u', 'r'],],
+    "Deserted Temple"                   : [100000, 0, 0, '', ['c'],],
+    "Dryad Arbor"                       : [100001, 0, 0, '', [{'g':{'summoning_sickness':False}}],],
+    "Emergence Zone"                    : [100000, 0, 0, '', ['c'],],
+    "Flooded Grove"                     : [100000, 0, 0, '', ['g', 'u'],],
+    "Flooded Strand"                    : [100000, 0, 0, '', [''],],
+    "Forest"                            : [100000, 0, 0, '', ['g'],],
+    "Gaea's Cradle"                     : [100000, 0, 0, '', ['special'],],
+    "Gemstone Caverns"                  : [100000, 0, 0, '', ['c'],],
+    "Island"                            : [100000, 0, 0, '', ['u'],],
+    "Mana Confluence"                   : [100000, 0, 0, '', ['w', 'u', 'b', 'r', 'g'],],
+    "Minamo, School at Water's Edge"    : [100000, 0, 0, '', ['u'],],
+    "Mistrise Village"                  : [100000, 0, 0, '', ['u'],],
+    "Misty Rainforest"                  : [100000, 0, 0, '', [''],],
+    "Otawara, Soaring City"             : [100000, 0, 0, '', ['u'],],
+    "Polluted Delta"                    : [100000, 0, 0, '', [''],],
+    "Prismatic Vista"                   : [100000, 0, 0, '', [''],],
+    "Scalding Tarn"                     : [100000, 0, 0, '', [''],],
+    "Shifting Woodland"                 : [100000, 0, 0, '', ['g'],],
+    "Snow-Covered Forest"               : [100000, 0, 0, '', ['g'],],
+    "Snow-Covered Island"               : [100000, 0, 0, '', ['u'],],
+    "Taiga"                             : [100000, 0, 0, '', ['g','r'],],
+    "Talon Gates of Madara"             : [100000, 1, 0, '', ['c'],],
+    "Tropical Island"                   : [100000, 0, 0, '', ['u','g'],],
+    "Urza's Cave"                       : [100000, 0, 0, '', ['c'],],
+    "Urza's Saga"                       : [100000, 0, 0, '', ['c'],],
+    "Verdant Catacombs"                 : [100000, 0, 0, '', [''],],
+    "Volcanic Island"                   : [100000, 0, 0, '', ['u','r'],],
+    "Windswept Heath"                   : [100000, 0, 0, '', [''],],
+    "Wooded Foothills"                  : [100000, 0, 0, '', [''],],
+    "Yavimaya, Cradle of Growth"        : [100000, 0, 0, '', ['g'],],
     }
 
 FETCH_LIST = [
@@ -235,6 +238,10 @@ TO DO:
 
     - Rocks / Rituals
         - Candelabra of Tawnos
+
+
+- Mana pool
+
 
 - Would be nice to get a way to change the initial conditions without having to 
   update the underlying code. Not critical though.,
@@ -306,7 +313,7 @@ class Gamestate:
                 'land': [3, ["Dryad Arbor", "Talon Gates of Madara"]],
                 },
             },
-        mana_pool:int = 0,
+        mana_pool:str = 'uur',
         storm_count:int = 0,
         ):
         '''
@@ -325,7 +332,7 @@ class Gamestate:
         self.graveyard      = []
         self.hand           = []
         self.library        = decklist
-        self.mana_pool      = mana_pool
+        self.mana_pool      = ManaPool(initial_mana = mana_pool)
         
         self.thrasios_cost  = 4
         self.oboro_cost     = 2
@@ -404,6 +411,7 @@ class Gamestate:
     #----------------------------------------------------------------------------
     def print_log(self):
         '''
+        PURPOSE
         '''
         num_battlefield_lands, _ = self.count_types(
             card_type = 'land', 
@@ -419,12 +427,14 @@ class Gamestate:
         #   mana_pool + mana netted from oboro activations
         current_max_mana = self.calc_max_mana()  
 
-        print(f'Hand: {len(self.hand)} | Mana Pool: {self.mana_pool} of {current_max_mana}' +\
+        print(f'Hand: {len(self.hand)} | Mana Pool: {self.mana_pool.pool}, Max: {current_max_mana}' +\
                 f' | Battlefield: Lands {num_battlefield_lands}, Creatures {num_battlefield_creatures}')
         print('\n')
     
     #----------------------------------------------------------------------------
-    def calc_max_mana(self, LEAVE_ONE_FLAG = False):
+    def calc_max_mana(self, 
+        leave_one_land:bool = False,
+        ):
         '''
         PURPOSE
         The purpose of this function is to calculate the maximum amount of mana
@@ -434,12 +444,21 @@ class Gamestate:
             1) Mana currently in the mana pool or
             2) can be produced from Oboro/cradle activations
         
-        When the LEAVE_ONE_FLAG is set to True, this function calculates the max
+        When the leave_one_land is set to True, this function calculates the max
         mana that can be generated leaving one (non-cradle) land in play.
+        
+        With the incoporation of pips, we need to expand this function to obtain
+        the max_mana available under several scenarios
+            1) Where one non-cradle land needs to remain in play
+            2) A specific minimum set of pips is required for a combo.
+                2.1) This is complicated when the current pips are not in the 
+                     mana pool and need to be generated from oboro activations
+                
+
         '''
         # Create a temporary instance of the current boardstate
         gamestate_copy = copy.deepcopy(self)
-        if not LEAVE_ONE_FLAG:
+        if not leave_one_land:
             while not gamestate_copy.FIZZLE_FLAG:
                 gamestate_copy.activate_oboro(verbose = False)
         
@@ -457,8 +476,121 @@ class Gamestate:
             # Activate oboro but leave one
             for _ in range(len(copy_oboro_lands) - 1):
                 gamestate_copy.activate_oboro(verbose = False)
+    
+        return gamestate_copy.mana_pool.total()
+    #---------------------------------------------------------------------------
+    def check_mana_state(self,
+        target_mana,
+        verbose:bool = False,
+        ):
+        '''
+        PURPOSE
+        The purpose of this function is to check if a target mana state is 
+        achievable from the current mana pool, lands, and oboro activations.
 
-        return gamestate_copy.mana_pool
+        FUTURE IMPLEMENTATIONS
+        Concievably we could have a mana dork that produces the color we need. 
+        Adding non-land mana producers to the mix would be more correct though
+        requires tracking summoning sickness/haste.
+        '''
+        gamestate_copy = copy.deepcopy(self)
+        
+        # Check if we already have enough pips
+        in_mana_pool_flag, missing_pips = gamestate_copy.mana_pool.check_castable(
+            mana_cost = target_mana
+            )
+        
+        if in_mana_pool_flag:
+            if verbose: print('Requested mana in mana pool')
+            return True
+
+        # Check if we have a land that can produce the required pips
+        #   Check different pips that can be produced
+        num_battlefield_lands, battlefield_lands = gamestate_copy.count_types(
+            card_type = 'land', 
+            source = self.battlefield,
+            )
+
+        #   Remove cradle and Dryad Arbor
+        exclude = ["Gaea's Cradle", "Dryad Arbor"]
+        for land in exclude:
+            try:
+                battlefield_lands.remove(land)
+            except ValueError:
+                # Land isnt on battlefield
+                pass
+
+        #   Get the number of mana combinations
+        mana_production_info = {}
+        non_mana_producers = []
+        
+        for card in battlefield_lands:
+            pip_options = ALL_CARDS[card][4]
+            
+            tmp = []
+            for pip in pip_options:
+                if isinstance(pip, dict):
+                    tmp.append(list(pip.keys())[0])
+                elif pip != '':
+                    tmp.append(pip)
+            if len(tmp) != 0:
+                mana_production_info[card] = tmp
+            else:
+                non_mana_producers.append(card)
+        
+        missing_producers = {}
+        keepers = []
+        for pip, amount_missing in missing_pips.items():
+            if pip != 'y':
+                curr_keepers = []
+                desp = []
+                for land, pip_options in mana_production_info.items():
+                    if pip in pip_options:
+                        curr_keepers.append(land)
+                if not curr_keepers:
+                    missing_producers[pip] = amount_missing
+                else:
+                    keepers.append(curr_keepers)
+        
+        # Get the best lands to keep
+        best_keepers = shortest_hitting_set(keepers)
+       
+        if missing_producers:
+            # We cannot make one of the pips with the current lands.
+            if verbose: 
+                print(
+                    f'Current lands cannot produce: {missing_producers}.'
+                    )
+            return False
+
+        #
+        # Now we need to check if we can make the missing pips with oboro 
+        # activations
+        #   To generate a pip from a tapped land, we need to spend 
+        #   oboro_cost unspecified pips and return a land to hand.
+        #
+        bounceable_lands = battlefield_lands
+        for land in best_keepers:
+            bounceable_lands.remove(land)
+        
+        if bounceable_lands:
+            gamestate_copy.move_specific(
+                cards_to_move = [bounceable_lands[0]],
+                source  = gamestate_copy.battlefield,
+                dest    = gamestate_copy.hand,
+                )
+            gamestate_copy.mana_pool.spend({'y':gamestate_copy.oboro_cost})
+            gamestate_copy.check_mana_state(target_mana = target_mana)
+
+            print(f'Current mana: {gamestate_copy.mana_pool.mana_pool}')
+            print(f'Missing mana: {missing_pips}')
+        else:
+            return False
+        
+        pprint(mana_production_info)
+        print(keepers)
+        print(best_keepers)
+
     #----------------------------------------------------------------------------
     def shuffle_deck(self):
         np.random.shuffle(self.library)
@@ -591,7 +723,8 @@ class Gamestate:
             card_type_id    = ALL_CARDS[card][0]
             card_spec_id    = ALL_CARDS[card][1]        
             card_mv         = ALL_CARDS[card][2]
-
+            card_mana_cost  = ALL_CARDS[card][3]
+            
             # Get Oboro Activations remaining
             num_battlefield_lands, battlefield_lands = self.count_types(
                 card_type = 'land', 
@@ -605,6 +738,7 @@ class Gamestate:
                 
                 if land not in FETCH_LIST + ["Dryad Arbor"]:
                     mana_producing_lands += 1
+            
             # Update cradle count
             num_battlefield_creatures, _ = self.count_types(
                 card_type = 'creature', 
@@ -616,12 +750,15 @@ class Gamestate:
                 ("Dryad Arbor" in battlefield_lands) 
             
             current_max_mana = self.calc_max_mana()
-            penult_max_mana = self.calc_max_mana(LEAVE_ONE_FLAG = True)
+            penult_max_mana = self.calc_max_mana(leave_one_land = True)
             TGOM_FLAG = "Talon Gates of Madara" in self.library
+            CASTABLE_FLAG, missing_pips = \
+                self.mana_pool.check_castable(mana_cost = card_mana_cost)
+
             #print(TGOM_FLAG, penult_max_mana,'/',current_max_mana, desperate_oboro_acts_remaining) 
 
             #-------------------------------------------------------------------
-            if int(card_spec_id) % 10 == 1:
+            if card == 'Talon Gates of Madarda':
                 '''
                 The top card is Talon Gates, choose to put into play
                 '''
@@ -643,14 +780,14 @@ class Gamestate:
                 return True
             
             #-------------------------------------------------------------------
-            elif (int(card_spec_id/10) % 10 == 1) and \
+            elif (int(card_spec_id/10) % 10 == 1) and (CASTABLE_FLAG)\
                 (
                     (
-                        (self.mana_pool - card_mv >= 1) and \
+                        (self.mana_pool.total() - card_mv >= 1) and \
                         (oboro_acts_remaining >= 1)
                     ) or \
                     (
-                        (self.mana_pool >= self.oboro_cost) and \
+                        (self.mana_pool.total() >= self.oboro_cost) and \
                         (oboro_acts_remaining >= 2)
                     )
                 ):
@@ -663,7 +800,7 @@ class Gamestate:
                 '''
                 if verbose: print(f'Cost Reducer! {card} > battlefield')
 
-                if (self.mana_pool - card_mv <= 0):
+                if (self.mana_pool.total() - card_mv <= 0):
                     # Activate oboro then cast creature
                     self.activate_oboro(verbose = True)
                 
@@ -674,7 +811,7 @@ class Gamestate:
                     dest = self.battlefield,
                     )
                 
-                self.mana_pool -= card_mv
+                self.mana_pool.spend(card_mana_cost)
                 self.update_activation_costs()
                 self.storm_count += 1
                 
@@ -684,6 +821,8 @@ class Gamestate:
             #-------------------------------------------------------------------
             elif (
                 (card == "Crop Rotation")
+                and \
+                CASTABLE_FLAG
                 and \
                 (penult_max_mana >= 1)
                 and \
@@ -712,7 +851,7 @@ class Gamestate:
                 return True
             #-------------------------------------------------------------------
             elif (
-                (card == "Trinket Mage")
+                (card == "Trinket Mage") and CASTABLE_FLAG
                 and \
                 (num_battlefield_creatures >= 5)
                 and \
@@ -731,8 +870,7 @@ class Gamestate:
                     )
                 
                 self.storm_count += 1
-                if verbose: 
-                    print(f'Win! {card} line is available.')
+                if verbose: print(f'Win! {card} line is available.')
                 
                 self.WIN_FLAG = True
                 self.WIN_CON = card
@@ -1187,7 +1325,10 @@ class Gamestate:
             PLAYED_FLAG = assess_card(position = 1)
     
     #----------------------------------------------------------------------------
-    def activate_oboro(self, verbose = False):
+    def activate_oboro(self, 
+        verbose:bool = False,
+        exclusions:list = [],
+        ):
         '''
         PURPOSE
         This function models an Oboro Breezecaller activation.
@@ -1206,8 +1347,8 @@ class Gamestate:
             return None
         
         # check available mana
-        if self.mana_pool >= self.oboro_cost:
-            self.mana_pool -= self.oboro_cost
+        if self.mana_pool.total() >= self.oboro_cost:
+            self.mana_pool.spend({'y' : self.oboro_cost})
         else:
             self.FIZZLE_FLAG = True
             return None
@@ -1217,10 +1358,10 @@ class Gamestate:
             # so that the cradle count is maximized.
             # Note, you can remove Dryad Arbor from the following list to relax 
             # this assumption, though if you don't run it, you don't need to.
-            exclusions = ["Gaea's Cradle", "Dryad Arbor"]
+            exclusions = exclusions + ["Gaea's Cradle", "Dryad Arbor"]
         
         else:
-            exclusions = ["Gaea's Cradle"]
+            exclusions = exclusions + ["Gaea's Cradle"]
 
         bounced = self.move_random(
             card_type = 'land',
@@ -1240,26 +1381,26 @@ class Gamestate:
             source = self.battlefield,
             )
 
-        self.mana_pool += num_battlefield_creatures
+        self.mana_pool.add({'g':num_battlefield_creatures})
 
         return None
     
     #----------------------------------------------------------------------------
     def grind(self, max_spins = 50):
-        
+        '''
+        '''
         # Add our mana from cradle and other lands to the mana pool
         #   Update cradle count
         num_battlefield_creatures, _ = self.count_types(
             card_type = 'creature', 
             source = self.battlefield,
             )
-
-        self.mana_pool += num_battlefield_creatures
+        self.mana_pool.add({'g':num_battlefield_creatures})
         
         self.print_log()
         while (not self.FIZZLE_FLAG) and (not self.WIN_FLAG):
             
-            if self.mana_pool >= self.thrasios_cost + self.oboro_cost:
+            if self.mana_pool.total() >= self.thrasios_cost + self.oboro_cost:
                 self.activate_thrasios(verbose = True)
             else:
                 self.activate_oboro(verbose = True)
@@ -1300,19 +1441,22 @@ if __name__ == "__main__":
             # location : card type : [amount, [cards to exclude]]
             'battlefield' : {
                 'creature': [3, ["Dryad Arbor", "Biomancer's Familiar"]],
-                'land': [3, ["Dryad Arbor", "Talon Gates of Madara"]],
+                'land': [6, ["Dryad Arbor", "Talon Gates of Madara"]],
                 },
             },
-        mana_pool = 2,
+        mana_pool = 'ggu',
         )
 
+    # Test check_mana_state function
+    game.check_mana_state('uuyyygr', verbose = True)
+    '''
     for trial in tqdm(range(max_trials), desc='Simulating Games'):
         current_game = copy.deepcopy(game)
         current_game.shuffle_deck()        
 
         current_game.grind()
     #game.calc_max_mana()
-
+    '''
 
 
 
